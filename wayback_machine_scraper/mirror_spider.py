@@ -6,6 +6,13 @@ from scrapy.linkextractors import LinkExtractor
 
 from scrapy_wayback_machine import WaybackMachineMiddleware
 
+from newsplease import NewsPlease
+from pymongo import MongoClient
+
+import traceback
+
+db = MongoClient('mongodb://ml4pAdmin:ml4peace@devlab-server').ml4p
+
 class MirrorSpider(CrawlSpider):
     name = 'mirror_spider'
     handle_httpstatus_list = [404]
@@ -44,19 +51,35 @@ class MirrorSpider(CrawlSpider):
         if response.status == 404:
             return
 
-        # make the parent directory
-        url_parts = response.url.split('://')[1].split('/')
-        parent_directory = os.path.join(self.directory, *url_parts)
-        os.makedirs(parent_directory, exist_ok=True)
+        # # make the parent directory
+        # url_parts = response.url.split('://')[1].split('/')
+        # parent_directory = os.path.join(self.directory, *url_parts)
+        # os.makedirs(parent_directory, exist_ok=True)
 
-        # construct the output filename
-        time = response.meta['wayback_machine_time']
-        if self.unix:
-            filename = '{0}.snapshot'.format(time.timestamp())
-        else:
-            filename = '{0}.snapshot'.format(time.strftime(WaybackMachineMiddleware.timestamp_format))
-        full_path = os.path.join(parent_directory, filename)
+        # # construct the output filename
+        # time = response.meta['wayback_machine_time']
+        # if self.unix:
+        #     filename = '{0}.snapshot'.format(time.timestamp())
+        # else:
+        #     filename = '{0}.snapshot'.format(time.strftime(WaybackMachineMiddleware.timestamp_format))
+        # full_path = os.path.join(parent_directory, filename)
 
-        # write out the file
-        with open(full_path, 'wb') as f:
-            f.write(response.body)
+        # # write out the file
+        # with open(full_path, 'wb') as f:
+        #     f.write(response.body)
+
+        try:
+            # check to make sure I don't already have it
+            if bool(db.articles.find_one({'url': response.url})):
+                return
+            # if I don't, insert
+            article = NewsPlease.from_html(response.body, response.url, datetime.today()).__dict__
+            if article['date_publish'] and article['title']:
+                article['download_via'] = 'wayback'
+                # insert to db
+                db.insert_one(article)
+                print('inserted '+article['url'])
+        except:
+            traceback.print_exc
+            print(article['url'])
+
